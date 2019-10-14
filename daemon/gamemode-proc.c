@@ -29,55 +29,33 @@ POSSIBILITY OF SUCH DAMAGE.
 
  */
 
-#pragma once
+#define _GNU_SOURCE
 
-#include <stdio.h>
-#include <string.h>
-#include <sys/param.h>
+#include "gamemode.h"
+#include "common-helpers.h"
+
+#include <fcntl.h>
+#include <linux/limits.h>
 #include <unistd.h>
 
 /**
- * Value clamping helper, works like MIN/MAX but constraints a value within the range.
+ * Opens the process environment for a specific PID and returns
+ * a file descriptor to the directory /proc/PID. Doing it that way prevents
+ * the directory going MIA when a process exits while we are looking at it
+ * and allows us to handle fewer error cases.
  */
-#define CLAMP(l, u, value) MAX(MIN(l, u), MIN(MAX(l, u), value))
-
-/**
- * Little helper to safely print into a buffer, returns a pointer into the buffer
- */
-#define buffered_snprintf(b, s, ...)                                                               \
-	(snprintf(b, sizeof(b), s, __VA_ARGS__) < (ssize_t)sizeof(b) ? b : NULL)
-
-/**
- * Little helper to safely print into a buffer, returns a newly allocated string
- */
-#define safe_snprintf(b, s, ...)                                                                   \
-	(snprintf(b, sizeof(b), s, __VA_ARGS__) < (ssize_t)sizeof(b) ? strndup(b, sizeof(b)) : NULL)
-
-/**
- * Helper function: Test, if haystack ends with needle.
- */
-static inline const char *strtail(const char *haystack, const char *needle)
+procfd_t game_mode_open_proc(const pid_t pid)
 {
-	char *pos = strstr(haystack, needle);
-	if (pos && (strlen(pos) == strlen(needle)))
-		return pos;
-	return NULL;
+	char buffer[PATH_MAX];
+	const char *proc_path = buffered_snprintf(buffer, "/proc/%d", pid);
+
+	return proc_path ? open(proc_path, O_RDONLY | O_CLOEXEC) : INVALID_PROCFD;
 }
 
 /**
- * Helper function for autoclosing file-descriptors. Does nothing if the argument
- * is NULL or the referenced integer < 0.
+ * Closes the process environment.
  */
-inline void cleanup_close(int *fd_ptr)
+int game_mode_close_proc(const procfd_t procfd)
 {
-	if (fd_ptr == NULL || *fd_ptr < 0)
-		return;
-
-	(void)close(*fd_ptr);
+	return close(procfd);
 }
-
-/**
- * Helper macro for autoclosing file-descriptors: use by prefixing the variable,
- * like "autoclose_fd int fd = -1;".
- */
-#define autoclose_fd __attribute__((cleanup(cleanup_close)))
